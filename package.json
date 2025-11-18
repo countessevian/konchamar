@@ -1,0 +1,43 @@
+{
+  "name": "konchamar-resort",
+  "version": "1.0.0",
+  "description": "Luxury beachfront resort booking system",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "nodemon server/server.js",
+    "test": "jest"
+  },
+  "keywords": [
+    "resort",
+    "booking",
+    "luxury",
+    "beach"
+  ],
+  "author": "Konchamar Resort",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^8.0.3",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "stripe": "^14.10.0",
+    "coinbase-commerce-node": "^1.0.4",
+    "@sendgrid/mail": "^8.1.0",
+    "pdfkit": "^0.13.0",
+    "uuid": "^9.0.1",
+    "crypto-js": "^4.2.0",
+    "compression": "^1.7.4",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0"
+  }
+}
