@@ -63,12 +63,14 @@ STRIPE_PUBLIC_KEY=pk_live_your_key_here
 STRIPE_WEBHOOK_SECRET=whsec_your_secret_here
 ```
 
-Get Coinbase keys from: https://commerce.coinbase.com/dashboard/settings
+#### Bitcoin Wallet (REQUIRED for Bitcoin payments)
 
 ```
-COINBASE_COMMERCE_API_KEY=your_api_key_here
-COINBASE_WEBHOOK_SECRET=your_webhook_secret_here
+BTC_WALLET_ADDRESS=your_bitcoin_wallet_address
+ADMIN_API_KEY=<paste-generated-key-here>
 ```
+
+Note: Bitcoin payments are manual. Customers will see your wallet address and QR code. You'll need to manually confirm payments using the admin endpoint.
 
 #### Email Service (REQUIRED for confirmations)
 
@@ -156,10 +158,24 @@ BASE_URL=https://your-actual-app-name.onrender.com
 4. Events: `payment_intent.succeeded`, `payment_intent.payment_failed`
 5. Copy webhook signing secret to `STRIPE_WEBHOOK_SECRET`
 
-**Coinbase Webhooks:**
-1. Go to: https://commerce.coinbase.com/dashboard/settings
-2. Add webhook URL: `https://your-app-name.onrender.com/api/webhooks/coinbase`
-3. Copy shared secret to `COINBASE_WEBHOOK_SECRET`
+### 3. Bitcoin Payment Confirmation
+
+Bitcoin payments are manual. When a customer pays:
+
+1. They'll see your BTC wallet address and QR code
+2. After they send payment, they'll contact you with their transaction ID
+3. Verify the payment in your Bitcoin wallet
+4. Confirm the payment using this API call:
+
+```bash
+curl -X POST https://your-app-name.onrender.com/api/payment/confirm-bitcoin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reservationId": "RESERVATION_ID",
+    "transactionId": "BTC_TRANSACTION_ID",
+    "adminKey": "YOUR_ADMIN_API_KEY"
+  }'
+```
 
 ### 3. Whitelist Render IPs in MongoDB Atlas
 

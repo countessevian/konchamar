@@ -28,7 +28,7 @@
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "stripe": "^14.10.0",
-    "coinbase-commerce-node": "^1.0.4",
+    "qrcode": "^1.5.3",
     "@sendgrid/mail": "^8.1.0",
     "pdfkit": "^0.13.0",
     "uuid": "^9.0.1",

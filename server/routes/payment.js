@@ -1,15 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const Commerce = require('coinbase-commerce-node');
+const QRCode = require('qrcode');
 const Reservation = require('../models/Reservation');
 const PaymentToken = require('../models/PaymentToken');
 const { sendConfirmationEmail } = require('../utils/email');
 const { syncToPostgres } = require('../utils/dbSync');
-
-const Client = Commerce.Client;
-Client.init(process.env.COINBASE_COMMERCE_API_KEY);
-const Charge = Commerce.resources.Charge;
 
 // Process credit card payment
 router.post('/credit-card', async (req, res) => {
@@ -128,43 +124,34 @@ router.post('/bitcoin', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Reservation hold expired' });
         }
 
-        // Create Coinbase Commerce charge
-        const chargeData = {
-            name: `Konchamar Resort - ${reservation.accommodationId.name}`,
-            description: `Reservation ${reservation.reservationId}`,
-            local_price: {
-                amount: reservation.pricing.total.toFixed(2),
-                currency: 'USD'
-            },
-            pricing_type: 'fixed_price',
-            metadata: {
-                reservationId: reservation.reservationId,
-                checkIn: reservation.dates.checkIn.toISOString(),
-                checkOut: reservation.dates.checkOut.toISOString()
-            }
-        };
+        // Get Bitcoin wallet address from environment
+        const btcWalletAddress = process.env.BTC_WALLET_ADDRESS || 'Not configured';
 
-        const charge = await Charge.create(chargeData);
+        // Generate QR code for the Bitcoin address
+        const btcUri = `bitcoin:${btcWalletAddress}?amount=${(reservation.pricing.total / 50000).toFixed(8)}&label=Konchamar Resort`;
+        const qrCodeDataUrl = await QRCode.toDataURL(btcUri);
+
+        // Update payment reference with pending status
+        reservation.paymentStatus = 'pending_bitcoin';
+        reservation.paymentRef = `BTC-${reservationId}`;
+        await reservation.save();
 
         // Store Bitcoin payment details
         await PaymentToken.create({
             reservationId: reservation.reservationId,
-            btcAddress: charge.addresses.bitcoin,
-            btcAmount: charge.pricing.bitcoin.amount
+            btcAddress: btcWalletAddress,
+            btcAmount: (reservation.pricing.total / 50000).toFixed(8) // Rough BTC conversion
         });
-
-        // Update payment reference
-        reservation.paymentRef = charge.id;
-        await reservation.save();
 
         res.json({
             success: true,
-            address: charge.addresses.bitcoin,
-            amount_btc: charge.pricing.bitcoin.amount,
+            address: btcWalletAddress,
+            amount_btc: (reservation.pricing.total / 50000).toFixed(8), // Approximate conversion
             amount_usd: reservation.pricing.total,
-            qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=bitcoin:${charge.addresses.bitcoin}?amount=${charge.pricing.bitcoin.amount}`,
-            hostedUrl: charge.hosted_url,
-            expiresAt: charge.expires_at
+            qrCode: qrCodeDataUrl,
+            message: 'Please send the exact BTC amount to the address above. Contact us after payment with your transaction ID.',
+            contactEmail: process.env.ADMIN_EMAIL || 'admin@konchamar.online',
+            contactPhone: '+1 314-2023148'
         });
 
     } catch (error) {
@@ -173,52 +160,43 @@ router.post('/bitcoin', async (req, res) => {
     }
 });
 
-// Coinbase Commerce webhook
-router.post('/webhooks/coinbase', async (req, res) => {
+// Manual Bitcoin payment confirmation (for admin use)
+router.post('/confirm-bitcoin', async (req, res) => {
     try {
-        const rawBody = req.rawBody; // Need raw body for signature verification
-        const signature = req.headers['x-cc-webhook-signature'];
+        const { reservationId, transactionId, adminKey } = req.body;
 
-        // Verify webhook signature
-        const Webhook = Commerce.Webhook;
-        try {
-            const event = Webhook.verifyEventBody(
-                rawBody,
-                signature,
-                process.env.COINBASE_WEBHOOK_SECRET
-            );
-
-            if (event.type === 'charge:confirmed') {
-                const chargeId = event.data.id;
-                const reservationId = event.data.metadata.reservationId;
-
-                // Find and update reservation
-                const reservation = await Reservation.findOne({ reservationId });
-
-                if (reservation) {
-                    reservation.paymentStatus = 'completed';
-                    reservation.paymentRef = chargeId;
-                    await reservation.save();
-
-                    // Sync to PostgreSQL
-                    await syncToPostgres(reservation);
-
-                    // Send confirmation email
-                    const decryptedEmail = reservation.getDecryptedEmail();
-                    await sendConfirmationEmail(reservation, decryptedEmail);
-
-                    console.log(`Bitcoin payment confirmed for reservation ${reservationId}`);
-                }
-            }
-
-            res.status(200).send('Webhook received');
-        } catch (error) {
-            console.error('Webhook verification failed:', error);
-            res.status(400).send('Webhook verification failed');
+        // Simple admin authentication
+        if (adminKey !== process.env.ADMIN_API_KEY) {
+            return res.status(403).json({ success: false, message: 'Unauthorized' });
         }
+
+        const reservation = await Reservation.findOne({ reservationId });
+
+        if (!reservation) {
+            return res.status(404).json({ success: false, message: 'Reservation not found' });
+        }
+
+        // Update reservation status
+        reservation.paymentStatus = 'completed';
+        reservation.paymentRef = transactionId || `BTC-${reservationId}`;
+        await reservation.save();
+
+        // Sync to PostgreSQL
+        await syncToPostgres(reservation);
+
+        // Send confirmation email
+        const decryptedEmail = reservation.getDecryptedEmail();
+        await sendConfirmationEmail(reservation, decryptedEmail);
+
+        res.json({
+            success: true,
+            message: 'Bitcoin payment confirmed',
+            reservationId: reservation.reservationId
+        });
+
     } catch (error) {
-        console.error('Coinbase webhook error:', error);
-        res.status(500).send('Webhook processing error');
+        console.error('Bitcoin confirmation error:', error);
+        res.status(500).json({ success: false, message: 'Error confirming payment' });
     }
 });
 

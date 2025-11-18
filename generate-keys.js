@@ -21,6 +21,10 @@ console.log('JWT_SECRET:');
 console.log(crypto.randomBytes(64).toString('hex'));
 console.log('');
 
+console.log('ADMIN_API_KEY (for Bitcoin payment confirmations):');
+console.log(crypto.randomBytes(32).toString('hex'));
+console.log('');
+
 console.log('==============================================');
 console.log('Keep these keys secure and never commit them!');
 console.log('==============================================\n');
