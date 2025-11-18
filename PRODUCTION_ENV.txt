@@ -1,0 +1,75 @@
+# KONCHAMAR RESORT - PRODUCTION ENVIRONMENT VARIABLES
+# Copy these into Render's Environment Variables section
+# Replace <PLACEHOLDER> values with your actual credentials
+
+# ===== SERVER =====
+NODE_ENV=production
+PORT=3000
+BASE_URL=https://your-app-name.onrender.com
+
+# ===== DATABASE =====
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/konchamar?retryWrites=true&w=majority
+
+# PostgreSQL (Optional - if using Render PostgreSQL addon)
+POSTGRES_HOST=<AUTO-FILLED-BY-RENDER>
+POSTGRES_PORT=5432
+POSTGRES_USER=<AUTO-FILLED-BY-RENDER>
+POSTGRES_PASSWORD=<AUTO-FILLED-BY-RENDER>
+POSTGRES_DB=konchamar
+
+# ===== SECURITY (MUST GENERATE!) =====
+# Run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ENCRYPTION_KEY=<GENERATE-THIS>
+JWT_SECRET=<GENERATE-THIS>
+JWT_EXPIRE=24h
+
+# ===== PAYMENT GATEWAYS =====
+# Stripe Live Keys from: https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_live_<YOUR-KEY>
+STRIPE_PUBLIC_KEY=pk_live_<YOUR-KEY>
+STRIPE_WEBHOOK_SECRET=whsec_<YOUR-SECRET>
+
+# Coinbase Commerce from: https://commerce.coinbase.com/dashboard/settings
+COINBASE_COMMERCE_API_KEY=<YOUR-API-KEY>
+COINBASE_WEBHOOK_SECRET=<YOUR-WEBHOOK-SECRET>
+
+# ===== EMAIL SERVICE =====
+# SendGrid from: https://app.sendgrid.com/settings/api_keys
+SENDGRID_API_KEY=SG.<YOUR-KEY>
+FROM_EMAIL=reservations@konchamar.online
+ADMIN_EMAIL=admin@konchamar.online
+
+# ===== PRICING =====
+ROOM_PRICE=100
+SUITE_PRICE=200
+VILLA_PRICE=500
+EVENT_HALL_PRICE=1000
+
+# ===== ADD-ONS =====
+SPA_PACKAGE=150
+SURF_LESSON=50
+AIRPORT_TRANSFER=75
+CATERING_PER_PERSON=30
+
+# ===== AVAILABILITY =====
+ROOMS_AVAILABLE=4
+SUITES_AVAILABLE=2
+VILLAS_AVAILABLE=1
+EVENT_HALL_AVAILABLE=1
+
+# ===== PRICING RULES =====
+HIGH_SEASON_MULTIPLIER=1.2
+TAX_RATE=0.13
+RESORT_FEE_RATE=0.05
+
+# ===== BOOKING =====
+HOLD_DURATION_MINUTES=15
+MIN_NIGHTS=1
+MAX_NIGHTS=30
+
+# ===== RATE LIMITING =====
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# ===== CDN (Optional) =====
+CDN_URL=https://cdn.konchamar.com
