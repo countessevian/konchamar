@@ -29,6 +29,7 @@ app.use(helmet({
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net", "https://unpkg.com", "https://cdnjs.cloudflare.com"],
             scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+            scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers like onclick
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "https:", "http:"],
             connectSrc: ["'self'", "https:"],
@@ -125,6 +126,36 @@ app.get('/api/accommodations', async (req, res) => {
         });
     } catch (error) {
         console.error('Get accommodations error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Pricing configuration endpoint
+app.get('/api/pricing', (req, res) => {
+    try {
+        res.json({
+            success: true,
+            data: {
+                accommodations: {
+                    room: parseFloat(process.env.ROOM_PRICE) || 80,
+                    suite: parseFloat(process.env.SUITE_PRICE) || 200,
+                    villa: parseFloat(process.env.VILLA_PRICE) || 650,
+                    event_hall: parseFloat(process.env.EVENT_HALL_PRICE) || 1300
+                },
+                addons: {
+                    spa: parseFloat(process.env.SPA_PACKAGE) || 150,
+                    surf: parseFloat(process.env.SURF_LESSON) || 50,
+                    transfer: parseFloat(process.env.AIRPORT_TRANSFER) || 75,
+                    catering: parseFloat(process.env.CATERING_PER_PERSON) || 30
+                },
+                rules: {
+                    taxRate: parseFloat(process.env.TAX_RATE) || 0.13,
+                    resortFeeRate: parseFloat(process.env.RESORT_FEE_RATE) || 0.05
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Get pricing error:', error);
         res.status(500).json({ success: false, message: 'Server error' });
     }
 });

@@ -4,17 +4,58 @@ const Accommodation = require('../models/Accommodation');
 const Availability = require('../models/Availability');
 const { syncAccommodationToPostgres, syncAvailabilityToPostgres } = require('../utils/dbSync');
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI);
-
 async function initializeData() {
+    // Connect to MongoDB with proper wait
+    await mongoose.connect(process.env.MONGODB_URI, {
+        serverSelectionTimeoutMS: 30000,
+        socketTimeoutMS: 45000,
+    });
+    console.log('✅ Connected to MongoDB');
+
     try {
         console.log('🚀 Starting data initialization...');
 
-        // Clear existing data (optional - comment out in production)
-        await Accommodation.deleteMany({});
-        await Availability.deleteMany({});
-        console.log('✅ Cleared existing data');
+        // Check if data already exists
+        const existingAccommodations = await Accommodation.countDocuments();
+        if (existingAccommodations > 0) {
+            console.log('⚠️  Data already exists. Updating availability with random values...');
+
+            // Update existing availability with random values
+            const accommodations = await Accommodation.find();
+            const availabilityConfig = {
+                room: parseInt(process.env.ROOMS_AVAILABLE) || 4,
+                suite: parseInt(process.env.SUITES_AVAILABLE) || 2,
+                villa: parseInt(process.env.VILLAS_AVAILABLE) || 1,
+                event_hall: parseInt(process.env.EVENT_HALL_AVAILABLE) || 1
+            };
+
+            let updateCount = 0;
+            for (const accommodation of accommodations) {
+                const maxAvailable = availabilityConfig[accommodation.type];
+
+                // Get all future availability records for this accommodation
+                const availabilityRecords = await Availability.find({
+                    accommodationId: accommodation._id,
+                    date: { $gte: new Date() }
+                });
+
+                // Update each record with a random value
+                for (const record of availabilityRecords) {
+                    const randomAvailable = Math.floor(Math.random() * (maxAvailable + 1));
+                    record.available = randomAvailable;
+                    record.status = randomAvailable > 0 ? 'available' : 'booked';
+                    await record.save();
+                    updateCount++;
+                }
+            }
+
+            console.log(`✅ Updated ${updateCount} availability records with random values`);
+            console.log('\n✨ Availability update completed successfully!\n');
+            process.exit(0);
+        }
+
+        // Original initialization code continues if no data exists
+        console.log('No existing data found. Creating fresh data...');
 
         // Create accommodations
         const accommodations = [
@@ -90,11 +131,15 @@ async function initializeData() {
                 const date = new Date(today);
                 date.setDate(date.getDate() + i);
 
+                // Random availability from 0 to max (from .env)
+                const maxAvailable = availabilityConfig[accommodation.type];
+                const randomAvailable = Math.floor(Math.random() * (maxAvailable + 1)); // 0 to max inclusive
+
                 availabilityRecords.push({
                     accommodationId: accommodation._id,
                     date: date,
-                    available: availabilityConfig[accommodation.type],
-                    status: 'available'
+                    available: randomAvailable,
+                    status: randomAvailable > 0 ? 'available' : 'booked'
                 });
             }
         }

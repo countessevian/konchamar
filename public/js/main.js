@@ -12,6 +12,11 @@ let currentEventSlide = 0;
 let galleryImages = [];
 let currentLightboxIndex = 0;
 let accommodations = []; // Store fetched accommodations
+let pricing = { // Store pricing configuration
+    accommodations: {},
+    addons: {},
+    rules: {}
+};
 
 // ===== Page Load =====
 window.addEventListener('DOMContentLoaded', () => {
@@ -24,7 +29,8 @@ async function initializeApp() {
         initializeLanguage();
     }
 
-    // Load accommodations from API
+    // Load pricing and accommodations from API
+    await loadPricing();
     await loadAccommodations();
 
     // Hide loading screen
@@ -51,6 +57,23 @@ async function initializeApp() {
             once: true,
             offset: 100
         });
+    }
+}
+
+// ===== Load Pricing from API =====
+async function loadPricing() {
+    try {
+        const response = await fetch('/api/pricing');
+        const data = await response.json();
+
+        if (data.success) {
+            pricing = data.data;
+            console.log('Loaded pricing:', pricing);
+        } else {
+            console.error('Failed to load pricing');
+        }
+    } catch (error) {
+        console.error('Error loading pricing:', error);
     }
 }
 
@@ -153,6 +176,9 @@ function initializeDatePickers() {
                     const nextDay = new Date(selectedDates[0]);
                     nextDay.setDate(nextDay.getDate() + 1);
                     checkOutPicker.set('minDate', nextDay);
+
+                    // Fetch and display availability for selected date
+                    fetchAvailabilityForDate(dateStr);
                 }
                 calculateBookingSummary();
             }
@@ -168,19 +194,114 @@ function initializeDatePickers() {
     }
 }
 
+// ===== Fetch and Display Availability for Date =====
+async function fetchAvailabilityForDate(dateStr) {
+    try {
+        const response = await fetch('/api/booking/availability/date', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dateStr })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            displayAvailability(data.availability);
+        } else {
+            console.error('Failed to fetch availability');
+        }
+    } catch (error) {
+        console.error('Error fetching availability:', error);
+    }
+}
+
+function displayAvailability(availabilityData) {
+    const displayDiv = document.getElementById('availabilityDisplay');
+    const listDiv = document.getElementById('availabilityList');
+
+    // Clear previous data
+    listDiv.innerHTML = '';
+
+    // Show the display
+    displayDiv.style.display = 'block';
+
+    // Create availability items
+    availabilityData.forEach(item => {
+        const itemDiv = document.createElement('div');
+        itemDiv.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: ${item.available > 0 ? '#f0f9f4' : '#fff5f5'};
+            border-left: 4px solid ${item.available > 0 ? '#2D6A4F' : '#e53e3e'};
+            border-radius: 8px;
+        `;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'font-weight: 600; color: var(--primary-blue);';
+        nameSpan.textContent = item.name;
+
+        const availSpan = document.createElement('span');
+        availSpan.style.cssText = `
+            font-weight: 700;
+            color: ${item.available > 0 ? '#2D6A4F' : '#e53e3e'};
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        `;
+        availSpan.innerHTML = `
+            <i class="fas fa-${item.available > 0 ? 'check-circle' : 'times-circle'}"></i>
+            ${item.available > 0 ? `${item.available} available` : 'Fully booked'}
+        `;
+
+        itemDiv.appendChild(nameSpan);
+        itemDiv.appendChild(availSpan);
+        listDiv.appendChild(itemDiv);
+    });
+}
+
 // ===== Booking Modal =====
 function openBookingModal(accommodationType = '') {
     const modal = document.getElementById('bookingModal');
+
+    if (!modal) {
+        console.error('Modal element not found!');
+        return;
+    }
+
+    // Display modal
+    modal.style.display = 'flex';
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
 
     // Populate accommodation options with live data
     populateAccommodationOptions();
 
-    // Set accommodation type if provided
+    // Always reset to blank option (commented out pre-selection logic)
+    // If you want to pre-select based on which button was clicked, uncomment below:
+    /*
     if (accommodationType) {
-        document.getElementById('accommodationType').value = accommodationType;
-        updateAccommodationInfo(accommodationType);
+        setTimeout(() => {
+            const selectElement = document.getElementById('accommodationType');
+            if (selectElement) {
+                selectElement.value = accommodationType;
+                updateAccommodationInfo(accommodationType);
+            }
+        }, 100);
+    }
+    */
+
+    // Ensure blank option is selected
+    const selectElement = document.getElementById('accommodationType');
+    if (selectElement) {
+        selectElement.value = '';
+    }
+
+    // Hide availability display when modal opens
+    const availabilityDisplay = document.getElementById('availabilityDisplay');
+    if (availabilityDisplay) {
+        availabilityDisplay.style.display = 'none';
     }
 
     // Reset to step 1
@@ -192,10 +313,17 @@ function openBookingModal(accommodationType = '') {
 function populateAccommodationOptions() {
     const select = document.getElementById('accommodationType');
 
-    // Clear existing options except the first one
-    while (select.options.length > 1) {
-        select.remove(1);
-    }
+    // Clear all existing options
+    select.innerHTML = '';
+
+    // Add blank placeholder option (disabled and selected by default)
+    const placeholderOption = document.createElement('option');
+    placeholderOption.value = '';
+    placeholderOption.textContent = '';
+    placeholderOption.disabled = true;
+    placeholderOption.selected = true;
+    placeholderOption.setAttribute('data-no-translate', 'true'); // Prevent translation system from processing
+    select.appendChild(placeholderOption);
 
     // Add options from loaded accommodations
     accommodations.forEach(acc => {
@@ -203,6 +331,7 @@ function populateAccommodationOptions() {
         option.value = acc.type;
         option.textContent = `${acc.name} - $${acc.basePrice}/${acc.type === 'event_hall' ? 'day' : 'night'}`;
         option.dataset.accId = acc._id;
+        option.setAttribute('data-no-translate', 'true'); // Prevent translation system from processing
         select.appendChild(option);
     });
 }
@@ -235,15 +364,23 @@ function updateAccommodationInfo(type) {
 
         // Update max guests based on capacity
         const guestsSelect = document.getElementById('guests');
-        // Clear and repopulate guests dropdown
-        while (guestsSelect.options.length > 1) {
-            guestsSelect.remove(1);
-        }
+        // Clear all options and repopulate guests dropdown
+        guestsSelect.innerHTML = '';
+
+        // Add blank placeholder option (disabled and selected by default)
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = '';
+        placeholderOption.disabled = true;
+        placeholderOption.selected = true;
+        placeholderOption.setAttribute('data-no-translate', 'true'); // Prevent translation system from processing
+        guestsSelect.appendChild(placeholderOption);
 
         for (let i = 1; i <= accommodation.capacity; i++) {
             const option = document.createElement('option');
             option.value = i;
             option.textContent = i === 1 ? '1 Guest' : `${i} Guests`;
+            option.setAttribute('data-no-translate', 'true'); // Prevent translation system from processing
             guestsSelect.appendChild(option);
         }
 
@@ -257,10 +394,22 @@ function updateAccommodationInfo(type) {
 function closeBookingModal() {
     const modal = document.getElementById('bookingModal');
     modal.classList.remove('active');
+    modal.style.display = 'none';
     document.body.style.overflow = 'auto';
 
     // Reset form
     document.getElementById('bookingForm').reset();
+
+    // Hide and clear availability display
+    const availabilityDisplay = document.getElementById('availabilityDisplay');
+    if (availabilityDisplay) {
+        availabilityDisplay.style.display = 'none';
+    }
+    const availabilityList = document.getElementById('availabilityList');
+    if (availabilityList) {
+        availabilityList.innerHTML = '';
+    }
+
     currentStep = 1;
     showStep(1);
 }
@@ -307,7 +456,7 @@ function validateCurrentStep() {
     return isValid;
 }
 
-function checkAvailability() {
+async function checkAvailability() {
     const checkIn = document.getElementById('checkIn').value;
     const checkOut = document.getElementById('checkOut').value;
     const accommodationType = document.getElementById('accommodationType').value;
@@ -347,12 +496,106 @@ function checkAvailability() {
         addOns: []
     };
 
-    // In production, this would make an API call to check availability
-    // For now, we'll simulate availability check
-    setTimeout(() => {
-        calculateBookingSummary();
-        nextStep();
-    }, 500);
+    // Check availability via API
+    try {
+        const response = await fetch('/api/booking/availability/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                checkIn,
+                checkOut,
+                accommodationType
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (data.available) {
+                // Accommodation is available, proceed to next step
+                calculateBookingSummary();
+                nextStep();
+            } else {
+                // Not available, show alternatives
+                let message = 'Selected dates are not available.';
+                if (data.suggestedDates && data.suggestedDates.length > 0) {
+                    message += '\n\nAlternative dates available:\n';
+                    data.suggestedDates.forEach(date => {
+                        message += `- ${new Date(date).toLocaleDateString()}\n`;
+                    });
+                }
+                alert(message);
+            }
+        } else {
+            alert('Error checking availability. Please try again.');
+        }
+    } catch (error) {
+        console.error('Availability check error:', error);
+        alert('Error checking availability. Please try again.');
+    }
+}
+
+// Find and auto-select consecutive available dates
+async function findAvailableDates() {
+    const lengthOfStay = document.getElementById('lengthOfStay').value;
+    const accommodationType = document.getElementById('accommodationType').value;
+
+    if (!lengthOfStay || lengthOfStay < 1) {
+        alert('Please enter the number of nights you wish to stay.');
+        return;
+    }
+
+    if (!accommodationType) {
+        alert('Please select an accommodation type first.');
+        return;
+    }
+
+    const nights = parseInt(lengthOfStay);
+
+    if (nights > 30) {
+        alert('Maximum stay is 30 nights.');
+        return;
+    }
+
+    // Show loading indicator
+    const findButton = event.target;
+    const originalText = findButton.innerHTML;
+    findButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Searching...</span>';
+    findButton.disabled = true;
+
+    try {
+        const response = await fetch('/api/booking/availability/find-consecutive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nights: nights,
+                accommodationType: accommodationType
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.found) {
+            // Set the dates in the date pickers
+            checkInPicker.setDate(data.checkIn);
+            checkOutPicker.setDate(data.checkOut);
+
+            // Show success message
+            alert(`Great! Found ${nights} consecutive night(s)!\n\nCheck-in: ${new Date(data.checkIn).toLocaleDateString()}\nCheck-out: ${new Date(data.checkOut).toLocaleDateString()}\n\nDates have been automatically filled in for you.`);
+
+            // Fetch availability for the selected check-in date
+            fetchAvailabilityForDate(data.checkIn);
+        } else {
+            alert(data.message || `No consecutive ${nights} night(s) available in the next 90 days. Please try a shorter stay or contact us directly.`);
+        }
+    } catch (error) {
+        console.error('Find consecutive dates error:', error);
+        alert('Error finding available dates. Please try again.');
+    } finally {
+        // Restore button state
+        findButton.innerHTML = originalText;
+        findButton.disabled = false;
+    }
 }
 
 function getAccommodationCapacity(type) {
@@ -383,6 +626,8 @@ function calculateBookingSummary() {
     const accommodationType = document.getElementById('accommodationType').value;
     const checkIn = document.getElementById('checkIn').value;
     const checkOut = document.getElementById('checkOut').value;
+    const guestsInput = document.getElementById('guests');
+    const guests = guestsInput ? parseInt(guestsInput.value) || 1 : 1;
 
     if (!accommodationType || !checkIn || !checkOut) return;
 
@@ -394,7 +639,14 @@ function calculateBookingSummary() {
     const selectedAddons = document.querySelectorAll('input[name="addons"]:checked');
     let addonsTotal = 0;
     selectedAddons.forEach(addon => {
-        addonsTotal += getAddonPrice(addon.value);
+        const addonValue = addon.value;
+        if (addonValue === 'catering') {
+            // Catering is per person per day (night)
+            addonsTotal += getAddonPrice(addonValue) * guests * nights;
+        } else {
+            // Other addons are flat rate
+            addonsTotal += getAddonPrice(addonValue);
+        }
     });
 
     const tax = (subtotal + addonsTotal) * 0.13; // 13% VAT
@@ -424,12 +676,12 @@ function getAccommodationPrice(type) {
         return accommodation.basePrice;
     }
 
-    // Fallback to default prices
+    // Fallback to default prices (from .env)
     const prices = {
-        'room': 100,
+        'room': 80,
         'suite': 200,
-        'villa': 500,
-        'event_hall': 1000
+        'villa': 650,
+        'event_hall': 1300
     };
     return prices[type] || 0;
 }
@@ -451,6 +703,12 @@ function getAccommodationName(type) {
 }
 
 function getAddonPrice(addon) {
+    // Use pricing from API if available, otherwise fallback
+    if (pricing.addons && pricing.addons[addon]) {
+        return pricing.addons[addon];
+    }
+
+    // Fallback to default prices (from .env)
     const prices = {
         'spa': 150,
         'surf': 50,
@@ -465,6 +723,7 @@ function initializeBookingForm() {
     const form = document.getElementById('bookingForm');
     const addons = document.querySelectorAll('input[name="addons"]');
     const accommodationSelect = document.getElementById('accommodationType');
+    const guestsSelect = document.getElementById('guests');
 
     // Update accommodation info when selection changes
     accommodationSelect.addEventListener('change', (e) => {
@@ -476,6 +735,11 @@ function initializeBookingForm() {
     addons.forEach(addon => {
         addon.addEventListener('change', calculateBookingSummary);
     });
+
+    // Update summary when number of guests changes (for catering calculation)
+    if (guestsSelect) {
+        guestsSelect.addEventListener('change', calculateBookingSummary);
+    }
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -509,14 +773,31 @@ function initializeBookingForm() {
             }
         }
 
-        // Submit booking (in production, this would call the API)
+        // Submit booking
         try {
             const response = await submitBooking(formData);
 
             if (response.success) {
-                // Show success message
-                alert(`Booking confirmed! Your reservation ID is: ${response.reservationId}\n\nYou will receive a confirmation email shortly.`);
-                closeBookingModal();
+                // Handle Bitcoin payment
+                if (formData.paymentMethod === 'bitcoin') {
+                    const networkId = document.getElementById('cryptoNetwork').value;
+
+                    if (!networkId) {
+                        alert('Please select a crypto network before completing your booking.');
+                        return;
+                    }
+
+                    // Generate crypto payment details
+                    const paymentGenerated = await generateCryptoPayment(response.reservationId, networkId);
+
+                    if (paymentGenerated) {
+                        // Payment details are now visible, user can make payment and confirm
+                        alert(`Booking created! Your reservation ID is: ${response.reservationId}\n\nPlease send the crypto payment to the address shown below, then click "I Have Made Payment" to complete your reservation.`);
+                    }
+                } else {
+                    // Credit card payment - attempt to process
+                    await processCreditCardPayment(response.reservationId, formData);
+                }
             } else {
                 alert('Booking failed. Please try again or contact support.');
             }
@@ -528,26 +809,48 @@ function initializeBookingForm() {
 }
 
 async function submitBooking(data) {
-    // Simulate API call
     console.log('Submitting booking:', data);
 
-    // In production, this would be:
-    // const response = await fetch('/api/booking/create', {
-    //     method: 'POST',
-    //     headers: { 'Content-Type': 'application/json' },
-    //     body: JSON.stringify(data)
-    // });
-    // return await response.json();
+    // Get the accommodation ID from the selected option
+    const accommodationSelect = document.getElementById('accommodationType');
+    const selectedOption = accommodationSelect.options[accommodationSelect.selectedIndex];
+    const accommodationId = selectedOption.dataset.accId;
 
-    // Simulate success
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            resolve({
-                success: true,
-                reservationId: 'KONCH-' + Date.now().toString().slice(-8)
-            });
-        }, 1000);
+    if (!accommodationId) {
+        throw new Error('Accommodation ID not found');
+    }
+
+    // Prepare booking request data
+    const bookingRequest = {
+        accommodationId: accommodationId,
+        checkIn: data.checkIn,
+        checkOut: data.checkOut,
+        guests: parseInt(data.guests),
+        guestDetails: {
+            name: data.guestName,
+            email: data.guestEmail,
+            phone: data.guestPhone,
+            address: data.guestAddress
+        },
+        addOns: data.addOns || [],
+        paymentMethod: data.paymentMethod,
+        specialRequests: data.specialRequests || ''
+    };
+
+    // Create booking via API
+    const response = await fetch('/api/booking/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingRequest)
     });
+
+    const result = await response.json();
+
+    if (!result.success) {
+        throw new Error(result.message || 'Booking failed');
+    }
+
+    return result;
 }
 
 // ===== Payment Method Toggle =====
@@ -565,7 +868,165 @@ function initializePaymentToggle() {
     bitcoinRadio.addEventListener('change', () => {
         creditCardForm.style.display = 'none';
         bitcoinForm.style.display = 'block';
+        // Load crypto networks when Bitcoin is selected
+        loadCryptoNetworks();
     });
+}
+
+// ===== Credit Card Payment Function =====
+async function processCreditCardPayment(reservationId, formData) {
+    try {
+        const response = await fetch('/api/payment/credit-card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                reservationId: reservationId,
+                cardNumber: formData.cardNumber,
+                cardExpiry: formData.cardExpiry,
+                cardCVV: formData.cardCVV
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`Payment successful! Your reservation ID is: ${reservationId}\n\nYou will receive a confirmation email shortly.`);
+            closeBookingModal();
+        } else {
+            // Payment failed - check if Bitcoin suggestion was made
+            if (data.suggestBitcoin) {
+                const switchToBitcoin = confirm(`${data.message}\n\nWould you like to switch to Bitcoin payment now?`);
+
+                if (switchToBitcoin) {
+                    // Switch to Bitcoin payment method
+                    document.getElementById('bitcoin').checked = true;
+                    document.getElementById('creditCardForm').style.display = 'none';
+                    document.getElementById('bitcoinForm').style.display = 'block';
+
+                    // Load crypto networks
+                    await loadCryptoNetworks();
+
+                    // Show message to user
+                    alert(`Please select your preferred cryptocurrency network and complete your booking.\n\nReservation ID: ${reservationId}`);
+                } else {
+                    alert('Booking cancelled. Please try again or contact support for assistance.');
+                    closeBookingModal();
+                }
+            } else {
+                alert(data.message || 'Payment failed. Please try again.');
+            }
+        }
+    } catch (error) {
+        console.error('Credit card payment error:', error);
+        alert('An error occurred processing your payment. Please try our Bitcoin payment option or contact support.');
+    }
+}
+
+// ===== Crypto Payment Functions =====
+let currentReservationId = null;
+
+// Load available crypto networks
+async function loadCryptoNetworks() {
+    try {
+        const response = await fetch('/api/payment/crypto/networks');
+        const data = await response.json();
+
+        if (data.success) {
+            const networkSelect = document.getElementById('cryptoNetwork');
+
+            // Clear existing options except the placeholder
+            networkSelect.innerHTML = '<option value="">Choose a network...</option>';
+
+            // Add network options
+            data.networks.forEach(network => {
+                const option = document.createElement('option');
+                option.value = network.id;
+                option.textContent = `${network.name} (${network.symbol})`;
+                networkSelect.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading crypto networks:', error);
+    }
+}
+
+// Generate crypto payment details after booking is created
+async function generateCryptoPayment(reservationId, networkId) {
+    try {
+        const response = await fetch('/api/payment/crypto/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                reservationId: reservationId,
+                network: networkId
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Show payment details section
+            document.getElementById('cryptoPaymentDetails').style.display = 'block';
+
+            // Populate payment details
+            document.getElementById('cryptoAddress').textContent = data.address;
+            document.getElementById('cryptoAmount').textContent = data.amount;
+            document.getElementById('cryptoSymbol').textContent = data.symbol;
+            document.getElementById('cryptoAmountUSD').textContent = data.amount_usd.toFixed(2);
+            document.getElementById('cryptoInstructions').textContent = data.instructions;
+
+            // Display QR code
+            const qrCodeImg = document.getElementById('cryptoQRCode');
+            qrCodeImg.src = data.qrCode;
+            qrCodeImg.style.display = 'block';
+
+            // Store reservation ID for confirmation
+            currentReservationId = reservationId;
+
+            return true;
+        } else {
+            alert('Error generating payment details: ' + data.message);
+            return false;
+        }
+    } catch (error) {
+        console.error('Error generating crypto payment:', error);
+        alert('Error generating payment details. Please try again.');
+        return false;
+    }
+}
+
+// Confirm crypto payment (user clicked "I have made payment")
+async function confirmCryptoPayment() {
+    if (!currentReservationId) {
+        alert('No active reservation found.');
+        return;
+    }
+
+    const transactionId = document.getElementById('transactionId').value;
+
+    try {
+        const response = await fetch('/api/payment/crypto/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                reservationId: currentReservationId,
+                transactionId: transactionId
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(data.message + '\n\nReservation ID: ' + data.reservationId);
+            closeBookingModal();
+            currentReservationId = null;
+        } else {
+            alert('Error confirming payment: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error confirming crypto payment:', error);
+        alert('Error confirming payment. Please try again.');
+    }
 }
 
 // ===== Gallery =====
@@ -686,6 +1147,14 @@ function showTestimonial(index) {
 
 // ===== Event Hall Slider =====
 function initializeEventSlider() {
+    const slides = document.querySelectorAll('.event-slide');
+
+    // Only initialize if slider elements exist
+    if (slides.length === 0) {
+        console.log('No event slides found, skipping slider initialization');
+        return;
+    }
+
     // Auto-rotate event images every 4 seconds
     setInterval(() => {
         changeEventSlide(1);
@@ -694,6 +1163,11 @@ function initializeEventSlider() {
 
 function changeEventSlide(direction) {
     const slides = document.querySelectorAll('.event-slide');
+
+    // Check if slides exist
+    if (slides.length === 0) {
+        return;
+    }
 
     slides[currentEventSlide].classList.remove('active');
 
@@ -828,9 +1302,11 @@ window.closeBookingModal = closeBookingModal;
 window.nextStep = nextStep;
 window.prevStep = prevStep;
 window.checkAvailability = checkAvailability;
+window.findAvailableDates = findAvailableDates;
 window.showTestimonial = showTestimonial;
 window.changeEventSlide = changeEventSlide;
 window.closeLightbox = closeLightbox;
 window.changeLightboxImage = changeLightboxImage;
+window.confirmCryptoPayment = confirmCryptoPayment;
 
 console.log('Konchamar Resort initialized successfully');

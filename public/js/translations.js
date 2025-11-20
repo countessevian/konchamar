@@ -385,6 +385,13 @@ function updatePlaceholders() {
     });
 }
 
+// Update option elements based on language
+function updateOptionElements() {
+    document.querySelectorAll('option[data-es-text][data-en-text]').forEach(option => {
+        option.textContent = currentLang === 'es' ? option.dataset.esText : option.dataset.enText;
+    });
+}
+
 // Change language function - simplified for conditional rendering
 function changeLanguage(lang) {
     console.log('changeLanguage called with:', lang);
@@ -393,6 +400,7 @@ function changeLanguage(lang) {
     document.documentElement.lang = lang;
     updateLanguageToggle();
     updatePlaceholders();
+    updateOptionElements();
     console.log('Language changed to:', lang, 'HTML lang attribute:', document.documentElement.lang);
 }
 
@@ -412,6 +420,9 @@ function convertToBilingualContent() {
         // Skip if already converted
         if (element.querySelector('.lang-es, .lang-en')) return;
 
+        // Skip if marked as no-translate
+        if (element.getAttribute('data-no-translate') === 'true') return;
+
         if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
             // For inputs, handle placeholders differently
             // Store placeholders on element
@@ -422,8 +433,11 @@ function convertToBilingualContent() {
             // Set initial placeholder
             element.placeholder = currentLang === 'es' ? esText : enText;
         } else if (element.tagName === 'OPTION') {
-            // For option elements
-            element.innerHTML = `<span class="lang-es">${esText}</span><span class="lang-en">${enText}</span>`;
+            // For option elements, store both translations as data attributes
+            // Options cannot contain HTML, so we store translations and update on language change
+            element.dataset.esText = esText;
+            element.dataset.enText = enText;
+            element.textContent = currentLang === 'es' ? esText : enText;
         } else {
             // Check if element has child elements (like icons)
             const hasChildElements = Array.from(element.children).some(child =>

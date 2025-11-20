@@ -8,6 +8,143 @@ const Accommodation = require('../models/Accommodation');
 const PaymentToken = require('../models/PaymentToken');
 const { postgresPool } = require('../config/database');
 
+// Get availability for a specific date (all accommodation types)
+router.post('/availability/date', [
+    body('date').isISO8601().toDate()
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+        const { date } = req.body;
+        const targetDate = new Date(date);
+        targetDate.setHours(0, 0, 0, 0);
+
+        // Get all accommodations
+        const accommodations = await Accommodation.find({ isActive: true });
+
+        // Get availability for each accommodation type
+        const availabilityData = await Promise.all(
+            accommodations.map(async (accommodation) => {
+                const availability = await Availability.findOne({
+                    accommodationId: accommodation._id,
+                    date: {
+                        $gte: targetDate,
+                        $lt: new Date(targetDate.getTime() + 24 * 60 * 60 * 1000)
+                    }
+                });
+
+                return {
+                    type: accommodation.type,
+                    name: accommodation.name,
+                    available: availability ? availability.available : 0,
+                    status: availability ? availability.status : 'booked'
+                };
+            })
+        );
+
+        res.json({
+            success: true,
+            date: targetDate,
+            availability: availabilityData
+        });
+    } catch (error) {
+        console.error('Date availability check error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
+// Find consecutive available dates for a given length of stay
+router.post('/availability/find-consecutive', [
+    body('nights').isInt({ min: 1, max: 30 }),
+    body('accommodationType').isIn(['room', 'suite', 'villa', 'event_hall'])
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+        const { nights, accommodationType } = req.body;
+
+        // Find accommodation
+        const accommodation = await Accommodation.findOne({ type: accommodationType, isActive: true });
+        if (!accommodation) {
+            return res.status(404).json({ success: false, message: 'Accommodation not found' });
+        }
+
+        // Start searching from today
+        const startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+
+        // Search for up to 90 days in the future
+        const maxSearchDays = 90;
+        let found = false;
+        let checkInDate = null;
+        let checkOutDate = null;
+
+        for (let startDay = 0; startDay < maxSearchDays; startDay++) {
+            const currentStartDate = new Date(startDate);
+            currentStartDate.setDate(currentStartDate.getDate() + startDay);
+
+            // Check if we have consecutive availability for the requested nights
+            const consecutiveDates = [];
+            let allAvailable = true;
+
+            for (let night = 0; night < nights; night++) {
+                const checkDate = new Date(currentStartDate);
+                checkDate.setDate(checkDate.getDate() + night);
+
+                const availability = await Availability.findOne({
+                    accommodationId: accommodation._id,
+                    date: {
+                        $gte: new Date(checkDate.setHours(0, 0, 0, 0)),
+                        $lt: new Date(checkDate.setHours(23, 59, 59, 999))
+                    }
+                });
+
+                if (!availability || availability.available <= 0) {
+                    allAvailable = false;
+                    break;
+                }
+
+                consecutiveDates.push(checkDate);
+            }
+
+            if (allAvailable && consecutiveDates.length === nights) {
+                // Found consecutive availability
+                checkInDate = consecutiveDates[0];
+                checkOutDate = new Date(consecutiveDates[consecutiveDates.length - 1]);
+                checkOutDate.setDate(checkOutDate.getDate() + 1); // Check-out is the day after last night
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            res.json({
+                success: true,
+                found: true,
+                checkIn: checkInDate.toISOString().split('T')[0],
+                checkOut: checkOutDate.toISOString().split('T')[0],
+                nights: nights,
+                message: `Found ${nights} consecutive night(s) starting ${checkInDate.toLocaleDateString()}`
+            });
+        } else {
+            res.json({
+                success: true,
+                found: false,
+                message: `No consecutive ${nights} night(s) available in the next ${maxSearchDays} days`
+            });
+        }
+    } catch (error) {
+        console.error('Find consecutive dates error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+});
+
 // Check availability
 router.post('/availability/check', [
     body('checkIn').isISO8601().toDate(),

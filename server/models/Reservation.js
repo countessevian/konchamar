@@ -44,8 +44,14 @@ const reservationSchema = new mongoose.Schema({
     },
     paymentStatus: {
         type: String,
-        enum: ['pending', 'completed', 'failed', 'refunded'],
+        enum: ['pending', 'completed', 'failed', 'refunded', 'pending_crypto', 'awaiting_verification'],
         default: 'pending'
+    },
+    paymentNetwork: {
+        type: String // For crypto payments: btc_mainnet, eth_mainnet, etc.
+    },
+    paymentSubmittedAt: {
+        type: Date // When user clicked "I have made payment" for crypto
     },
     paymentRef: {
         type: String
