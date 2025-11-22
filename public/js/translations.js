@@ -73,13 +73,38 @@ const translations = {
         'event.price.period': '/día',
         'event.cta': 'Consultar sobre Eventos',
 
+        // Rooms Section
+        'rooms.label': 'Comodidad y Elegancia',
+        'rooms.title': 'Habitaciones Vista al Jardín',
+        'rooms.subtitle': 'Refugios serenos con comodidades modernas y vistas exuberantes al jardín',
+
+        // Suites Section
+        'suites.label': 'Experiencia Premium',
+        'suites.title': 'Suites Frente al Océano',
+        'suites.subtitle': 'Lujo espacioso con vistas panorámicas al océano y acceso directo a la playa',
+        'suites.coming': 'Fotos próximamente - Contáctenos para disponibilidad',
+
+        // Villas Section
+        'villas.label': 'Lujo Supremo',
+        'villas.title': 'Villas con Piscina Privada',
+        'villas.subtitle': 'El pináculo de la vida exclusiva con piscinas infinitas privadas y amplias terrazas',
+
+        // Beach Views Section
+        'beach.label': 'Paisajes Impresionantes',
+        'beach.title': 'Vistas Espectaculares de la Playa',
+        'beach.subtitle': 'Descubre la belleza natural de Playa El Majahual, donde las costas prístinas se encuentran con el Pacífico',
+        'beach.description': 'Experimenta acceso directo a una de las playas más hermosas de El Salvador. Perfecto para surfear, nadar o simplemente relajarse bajo el sol tropical.',
+        'beach.cta': 'Reserva Tu Escape a la Playa',
+
         // Gallery
         'gallery.label': 'Viaje Visual',
         'gallery.title': 'Experimenta Konchamar',
         'gallery.filter.all': 'Todo',
         'gallery.filter.rooms': 'Habitaciones',
-        'gallery.filter.dining': 'Comedor',
+        'gallery.filter.villas': 'Villas',
+        'gallery.filter.events': 'Eventos',
         'gallery.filter.beach': 'Playa',
+        'gallery.filter.dining': 'Comedor',
         'gallery.filter.activities': 'Actividades',
 
         // Testimonials
@@ -130,6 +155,10 @@ const translations = {
         'booking.step1.title': 'Selecciona Tus Fechas y Alojamiento',
         'booking.checkin': 'Fecha de Entrada',
         'booking.checkout': 'Fecha de Salida',
+        'booking.length.title': 'Selección Rápida de Fechas',
+        'booking.length.label': 'Duración de la Estadía (noches)',
+        'booking.length.button': 'Buscar Fechas Disponibles',
+        'booking.availability.title': 'Unidades Disponibles para la Fecha Seleccionada',
         'booking.type': 'Tipo de Alojamiento',
         'booking.type.select': 'Selecciona alojamiento...',
         'booking.type.room': 'Habitación Vista al Jardín - $100/noche',
@@ -251,13 +280,38 @@ const translations = {
         'event.price.period': '/day',
         'event.cta': 'Inquire About Events',
 
+        // Rooms Section
+        'rooms.label': 'Comfort & Elegance',
+        'rooms.title': 'Garden View Rooms',
+        'rooms.subtitle': 'Serene retreats with modern amenities and lush garden views',
+
+        // Suites Section
+        'suites.label': 'Premium Experience',
+        'suites.title': 'Oceanfront Suites',
+        'suites.subtitle': 'Spacious luxury with panoramic ocean views and direct beach access',
+        'suites.coming': 'Photos coming soon - Contact us for availability',
+
+        // Villas Section
+        'villas.label': 'Ultimate Luxury',
+        'villas.title': 'Private Pool Villas',
+        'villas.subtitle': 'The pinnacle of exclusive living with private infinity pools and expansive terraces',
+
+        // Beach Views Section
+        'beach.label': 'Breathtaking Scenery',
+        'beach.title': 'Stunning Beach Views',
+        'beach.subtitle': 'Discover the natural beauty of Playa El Majahual, where pristine shores meet the Pacific',
+        'beach.description': 'Experience direct access to one of El Salvador\'s most beautiful beaches. Perfect for surfing, swimming, or simply relaxing under the tropical sun.',
+        'beach.cta': 'Book Your Beach Escape',
+
         // Gallery
         'gallery.label': 'Visual Journey',
         'gallery.title': 'Experience Konchamar',
         'gallery.filter.all': 'All',
         'gallery.filter.rooms': 'Rooms',
-        'gallery.filter.dining': 'Dining',
+        'gallery.filter.villas': 'Villas',
+        'gallery.filter.events': 'Events',
         'gallery.filter.beach': 'Beach',
+        'gallery.filter.dining': 'Dining',
         'gallery.filter.activities': 'Activities',
 
         // Testimonials
@@ -308,6 +362,10 @@ const translations = {
         'booking.step1.title': 'Select Your Dates & Accommodation',
         'booking.checkin': 'Check-in Date',
         'booking.checkout': 'Check-out Date',
+        'booking.length.title': 'Quick Date Selection',
+        'booking.length.label': 'Length of Stay (nights)',
+        'booking.length.button': 'Find Available Dates',
+        'booking.availability.title': 'Available Units for Selected Date',
         'booking.type': 'Accommodation Type',
         'booking.type.select': 'Select accommodation...',
         'booking.type.room': 'Garden View Room - $100/night',
